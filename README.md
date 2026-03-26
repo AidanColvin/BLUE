@@ -26,7 +26,7 @@ Your best score is remembered for the session.
 
 ## Visuals
 
-The game uses a muted, layered city aesthetic across three randomised colour palettes — each run has a different mood. The background features:
+The game uses a muted, layered city aesthetic across three randomised colour palettes each run has a different mood. The background features:
 
 - Parallax skyline with silhouetted buildings at three depths
 - Telephone poles with shoes on the wires
@@ -37,7 +37,7 @@ The game uses a muted, layered city aesthetic across three randomised colour pal
 
 ## Installation
 
-No install needed — it's a single HTML file.
+No install needed it's a single HTML file.
 
 **Run locally:**
 
@@ -68,21 +68,7 @@ Then visit `http://localhost:8000/blue.html`.
 
 ## Mobile
 
-Works on iPhone and iPad out of the box — tap anywhere on the canvas to flap. The game scales to fill the screen in both portrait and landscape orientations.
+Works on iPhone and iPad out of the box tap anywhere on the canvas to flap. The game scales to fill the screen in both portrait and landscape orientations.
 
 ---
 
-## Files
-
-```
-blue.html   — the entire game, self-contained
-README.md   — this file
-```
-
----
-
-## Built with
-
-- HTML5 Canvas API
-- Vanilla JavaScript
-- [Josefin Sans](https://fonts.google.com/specimen/Josefin+Sans) via Google Fonts
