@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Blue</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@100;300&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1610;
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; font-family: 'Josefin Sans', sans-serif;
+    overflow: hidden; touch-action: none;
+  }
+  #gameContainer {
+    position: relative; width: 640px; height: 360px;
+    overflow: hidden; border-radius: 4px;
+    box-shadow: 0 0 80px rgba(160,140,100,0.12);
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  #ui { position: absolute; top:0;left:0;right:0;bottom:0; pointer-events:none; }
+
+  /* Score — top left */
+  #score {
+    position: absolute; top: 14px; left: 20px;
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 22px; font-weight: 300; letter-spacing: 6px;
+    color: rgba(255,255,255,0.75); text-transform: uppercase;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.35);
+  }
+  #best {
+    position: absolute; top: 44px; left: 22px;
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 10px; font-weight: 100; letter-spacing: 4px;
+    color: rgba(255,255,255,0.28); text-transform: uppercase;
+  }
+
+  /* Play button — top right */
+  #play-btn {
+    position: absolute; top: 12px; right: 16px;
+    pointer-events: all; cursor: pointer;
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 9px; font-weight: 300; letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+    border: 0.5px solid rgba(255,255,255,0.22);
+    padding: 6px 14px 5px;
+    border-radius: 2px;
+    background: rgba(0,0,0,0.18);
+    transition: color 0.2s, border-color 0.2s;
+    user-select: none;
+  }
+  #play-btn:hover { color: rgba(255,255,255,0.80); border-color: rgba(255,255,255,0.45); }
+
+  /* Overlays */
+  #title-screen, #game-over-screen {
+    position: absolute; top:0;left:0;right:0;bottom:0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    pointer-events: all; cursor: pointer;
+    background: rgba(14,12,10,0.44);
+  }
+  #title-screen h1 {
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 96px; font-weight: 100;
+    color: rgba(240,232,215,0.82);
+    letter-spacing: 34px; text-indent: 34px;
+    text-transform: uppercase;
+  }
+  #title-screen p {
+    color: rgba(255,255,255,0.26); font-size: 9px; font-weight: 100;
+    margin-top: 22px; text-align: center; line-height: 2.5;
+    letter-spacing: 3px; text-transform: uppercase;
+  }
+  #game-over-screen { display: none; }
+  #game-over-screen h2 {
+    font-family: 'Josefin Sans', sans-serif; font-size: 54px; font-weight: 100;
+    color: rgba(240,232,215,0.65); letter-spacing: 20px; text-transform: uppercase;
+  }
+  #game-over-screen .final-score {
+    font-size: 11px; font-weight: 100; color: rgba(255,255,255,0.30);
+    margin: 14px 0 26px; letter-spacing: 4px; text-transform: uppercase;
+  }
+  #game-over-screen p { color: rgba(255,255,255,0.18); font-size: 9px; letter-spacing: 3px; text-transform: uppercase; }
+  @media (max-width: 680px) {
+    body { align-items: stretch; justify-content: stretch; }
+    #gameContainer { width: 100vw; height: 100vw; max-height: 100vh; border-radius: 0; }
+    #title-screen h1 { font-size: 52px; letter-spacing: 18px; }
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    #gameContainer { width: 100vw; height: 100vh; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="canvas"></canvas>
+  <div id="ui">
+    <div id="score">0</div>
+    <div id="best"></div>
+    <div id="play-btn">play</div>
+    <div id="title-screen">
+      <h1>Blue</h1>
+      <p>space · click · tap to flap</p>
+    </div>
+    <div id="game-over-screen">
+      <h2>lose</h2>
+      <div class="final-score" id="final-score-text">0  ·  best 0</div>
+      <p>space or click to retry</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 640, H = 360;
+canvas.width = W; canvas.height = H;
+
+const scoreEl      = document.getElementById('score');
+const bestEl       = document.getElementById('best');
+const titleEl      = document.getElementById('title-screen');
+const gameOverEl   = document.getElementById('game-over-screen');
+const finalScoreEl = document.getElementById('final-score-text');
+const playBtn      = document.getElementById('play-btn');
+
+// ── Palettes (from LIV) ───────────────────────────────────────────────────────
+const PALETTES = [
+  { sky1:'#a8b4a2',sky2:'#c8bc88',sun:'#d8b862',
+    ground:'#beb4a2',groundDark:'#9e9280',roadLine:'#b0a890',
+    bldgFar:'#8a9284',bldgMid:'#727a6e',bldgNear:'#5c6458',
+    tree:'#3a4c3c',treeDark:'#2a3430',
+    wire:'#3c2c1a',accent:'#b08848',
+    flagColors:['#b03828','#c09040','#5890a0','#808040','#a05870'] },
+  { sky1:'#9ca8b0',sky2:'#b8b0bc',sun:'#ccaa90',
+    ground:'#a8a09c',groundDark:'#887e78',roadLine:'#9c9490',
+    bldgFar:'#686878',bldgMid:'#585868',bldgNear:'#484858',
+    tree:'#283030',treeDark:'#182020',
+    wire:'#281c10',accent:'#907060',
+    flagColors:['#a03828','#b08038','#487888','#787030','#884860'] },
+  { sky1:'#b4bcb0',sky2:'#c4bc9c',sun:'#d4c880',
+    ground:'#acb4a8',groundDark:'#8c9488',roadLine:'#a0a898',
+    bldgFar:'#687870',bldgMid:'#586860',bldgNear:'#485850',
+    tree:'#2c4038',treeDark:'#1c2c28',
+    wire:'#382818',accent:'#9c8050',
+    flagColors:['#a83828','#c09040','#508898','#808840','#985068'] },
+];
+let pal = PALETTES[0];
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const GROUND_Y = H * 0.76;
+const BLDG_W   = 90;
+const GAP      = 210;      // very wide gap
+const GRAVITY  = 0.18;     // very gentle fall
+const JUMP_V   = -5.5;     // soft jump
+const BASE_SPD = 1.2;      // very slow start
+
+// Bird starts at screen center (both x and y)
+const BIRD_X   = W / 2;
+const BIRD_START_Y = H / 2;
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = 'title';
+let score = 0, hiScore = 0;
+let frame = 0;
+let speed = BASE_SPD;
+let particles = [];
+let buildings = [];  // obstacle pairs
+let bldgCooldown = 0;
+let bgOff1 = 0, bgOff2 = 0, bgOff3 = 0, groundOff = 0, wireOff = 0;
+
+const bird = { y: BIRD_START_Y, vy: 0, angle: 0, wingPhase: 0 };
+
+// Skyline (verbatim from LIV)
+let skyline = [];
+function buildSkyline() {
+  skyline = [];
+  const templates = [
+    {w:12,h:155},{w:22,h:88},{w:10,h:178},{w:18,h:108},
+    {w:14,h:168},{w:26,h:72},{w:10,h:138},{w:16,h:122},
+    {w:12,h:182},{w:20,h:95},{w:14,h:148},{w:24,h:82},
+    {w:10,h:162},{w:18,h:104},{w:12,h:134},{w:22,h:86},
+    {w:8,h:175},{w:16,h:98},{w:14,h:145},{w:20,h:78},
+  ];
+  let x = 0;
+  for (let i = 0; i < templates.length * 2; i++) {
+    const t = templates[i % templates.length];
+    skyline.push({ x, w: t.w, h: t.h, style: i % 4 });
+    x += t.w + 1 + (i % 4);
+  }
+}
+buildSkyline();
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+let flapPressed = false;
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); flapPressed = true; }
+});
+canvas.addEventListener('mousedown', () => { flapPressed = true; });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); flapPressed = true; }, { passive: false });
+titleEl.addEventListener('click',    () => { if (state==='title') startGame(); });
+gameOverEl.addEventListener('click', () => { if (state==='dead')  startGame(); });
+playBtn.addEventListener('click',    () => { if (state==='title'||state==='dead') startGame(); else if (state==='playing') die(); });
+
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
+function startGame() {
+  state = 'playing'; score = 0; frame = 0; speed = BASE_SPD;
+  buildings = []; bldgCooldown = 100; particles = [];
+  bgOff1 = bgOff2 = bgOff3 = groundOff = wireOff = 0;
+  bird.y = BIRD_START_Y; bird.vy = 0; bird.angle = 0; bird.wingPhase = 0;
+  scoreEl.textContent = '0';
+  pal = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+  buildSkyline();
+  titleEl.style.display = 'none';
+  gameOverEl.style.display = 'none';
+  playBtn.textContent = 'stop';
+}
+
+function flap() {
+  bird.vy = JUMP_V;
+  spawnParticles(BIRD_X - 10, bird.y + 4, 5, pal.accent + 'aa');
+}
+
+function spawnParticles(x, y, n, color) {
+  for (let i = 0; i < n; i++) {
+    particles.push({ x, y,
+      vx: (Math.random()-0.5)*2.8, vy: -(Math.random()*2+0.4),
+      life: 1, color, size: Math.random()*2+1.5 });
+  }
+}
+
+// Generate a random city building pair
+const BLDG_STYLES = ['glass','stone','tower','stepped'];
+function addBuilding() {
+  const minTop = 110;                       // top building always at least 110px tall
+  const maxTop = GROUND_Y - GAP - 110;     // bottom building always at least 110px tall
+  const top = minTop + Math.random() * Math.max(0, maxTop - minTop);
+  const style = BLDG_STYLES[Math.floor(Math.random() * BLDG_STYLES.length)];
+  const w = BLDG_W + Math.floor(Math.random() * 30 - 10);
+  buildings.push({ x: W + w, top, w, style, scored: false });
+}
+
+function die() {
+  state = 'dead';
+  spawnParticles(BIRD_X, bird.y, 18, '#1d9bf0cc');
+  finalScoreEl.textContent = score + '  ·  best ' + hiScore;
+  gameOverEl.style.display = 'flex';
+  playBtn.textContent = 'play';
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+function update() {
+  if (state !== 'playing') {
+    if (state === 'title' || state === 'dead') {
+      bird.y = BIRD_START_Y + Math.sin(frame * 0.05) * 10;
+      bird.wingPhase += 0.12;
+      frame++;
+    }
+    return;
+  }
+
+  frame++;
+  speed = Math.min(BASE_SPD + Math.floor(score / 20) * 0.08, 2.8);
+
+  bgOff1 = (bgOff1 + speed * 0.04) % 2200;
+  bgOff2 = (bgOff2 + speed * 0.16) % 2200;
+  bgOff3 = (bgOff3 + speed * 0.38) % (W + 120);
+  groundOff = (groundOff + speed) % 80;
+  wireOff   = (wireOff + speed) % 220;
+
+  if (flapPressed) { flap(); flapPressed = false; }
+
+  bird.vy += GRAVITY;
+  bird.y  += bird.vy;
+  bird.angle = Math.min(Math.PI / 3.5, Math.max(-Math.PI / 6, bird.vy * 0.068));
+  bird.wingPhase += bird.vy < 0 ? 0.35 : 0.14;
+
+  bldgCooldown--;
+  if (bldgCooldown <= 0) {
+    addBuilding();
+    bldgCooldown = Math.max(60, 90 - Math.floor(score / 10));
+  }
+  buildings.forEach(b => b.x -= speed);
+  buildings = buildings.filter(b => b.x > -b.w - 10);
+
+  const br = 11;
+  for (const b of buildings) {
+    if (!b.scored && b.x + b.w < BIRD_X) {
+      b.scored = true; score++;
+      scoreEl.textContent = score;
+      if (score > hiScore) { hiScore = score; }
+      bestEl.textContent = hiScore > 0 ? 'best  ' + hiScore : '';
+    }
+    if (BIRD_X + br > b.x + 4 && BIRD_X - br < b.x + b.w - 4) {
+      if (bird.y - br < b.top || bird.y + br > b.top + GAP) { die(); return; }
+    }
+  }
+
+  if (bird.y + br > GROUND_Y - 2 || bird.y - br < 0) { die(); return; }
+
+  particles.forEach(p => { p.x+=p.vx; p.y+=p.vy; p.vy+=0.06; p.life-=0.028; });
+  particles = particles.filter(p => p.life > 0);
+}
+
+// ── Draw: sky, skyline, trees, poles, ground (verbatim from LIV) ──────────────
+function drawSky() {
+  const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  g.addColorStop(0, pal.sky1); g.addColorStop(1, pal.sky2);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROUND_Y);
+  const sg = ctx.createRadialGradient(W*0.7,H*0.18,0,W*0.7,H*0.18,120);
+  sg.addColorStop(0, pal.sun+'b0'); sg.addColorStop(0.2, pal.sun+'44'); sg.addColorStop(1,'transparent');
+  ctx.fillStyle = sg;
+  ctx.beginPath(); ctx.arc(W*0.7,H*0.18,120,0,Math.PI*2); ctx.fill();
+}
+
+function drawSkyline() {
+  const totalW = skyline[skyline.length-1].x + skyline[skyline.length-1].w + 10;
+  function drawLayer(offsetFrac, color, alpha, heightScale, doTops) {
+    ctx.globalAlpha = alpha; ctx.fillStyle = color;
+    for (let rep = -1; rep <= 1; rep++) {
+      skyline.forEach(b => {
+        const rx = b.x - bgOff1 * offsetFrac + rep * totalW;
+        if (rx > W+80 || rx+b.w < -80) return;
+        const bh = b.h * heightScale;
+        ctx.fillRect(rx, GROUND_Y-bh, b.w, bh);
+        if (doTops) {
+          if (b.style===0) {
+            ctx.fillRect(rx+b.w*0.18,GROUND_Y-bh-14,b.w*0.64,14);
+            ctx.fillRect(rx+b.w*0.32,GROUND_Y-bh-22,b.w*0.36,8);
+            ctx.fillRect(rx+b.w*0.42,GROUND_Y-bh-28,b.w*0.16,6);
+          } else if (b.style===1) {
+            ctx.fillRect(rx+b.w*0.4,GROUND_Y-bh-24,b.w*0.2,24);
+          } else if (b.style===2) {
+            ctx.fillRect(rx-1,GROUND_Y-bh-5,b.w+2,5);
+          } else {
+            ctx.beginPath(); ctx.moveTo(rx,GROUND_Y-bh); ctx.lineTo(rx+b.w/2,GROUND_Y-bh-16); ctx.lineTo(rx+b.w,GROUND_Y-bh); ctx.closePath(); ctx.fill();
+          }
+        }
+      });
+    }
+    ctx.globalAlpha = 1;
+  }
+  drawLayer(0.10, pal.bldgFar,  0.18, 1.28, false);
+  drawLayer(0.25, pal.bldgMid,  0.34, 1.0,  true);
+  drawLayer(0.48, pal.bldgNear, 0.50, 0.64, false);
+  ctx.globalAlpha = 0.07; ctx.fillStyle = pal.sun;
+  for (let rep=-1; rep<=1; rep++) {
+    skyline.forEach(b => {
+      const rx = b.x - bgOff1*0.25 + rep*totalW;
+      if (rx>W+80||rx+b.w<-80) return;
+      for (let wy=GROUND_Y-b.h+12; wy<GROUND_Y-10; wy+=9)
+        for (let wx=rx+2; wx<rx+b.w-2; wx+=5) ctx.fillRect(wx,wy,1.5,2.5);
+    });
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawStreetTrees() {
+  for (let i=0; i<5; i++) {
+    const x = ((i*250+120)-bgOff3)%(W+200)-100;
+    if (x<-110||x>W+60) continue;
+    const h = 54+(i%3)*12;
+    ctx.fillStyle = pal.treeDark; ctx.fillRect(x-3,GROUND_Y-h*0.36,6,h*0.36);
+    ctx.fillStyle = pal.tree; ctx.globalAlpha = 0.80;
+    ctx.beginPath(); ctx.arc(x,GROUND_Y-h*0.52,h*0.28,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 0.58;
+    ctx.beginPath(); ctx.arc(x-h*0.16,GROUND_Y-h*0.46,h*0.18,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x+h*0.16,GROUND_Y-h*0.48,h*0.16,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawShoe(cx,cy,color,sz) {
+  ctx.save(); ctx.translate(cx,cy);
+  ctx.fillStyle='#28201088';
+  ctx.beginPath(); ctx.roundRect(-sz,sz*0.1,sz*2,sz*0.55,sz*0.2); ctx.fill();
+  ctx.fillStyle=color;
+  ctx.beginPath(); ctx.moveTo(-sz*0.85,sz*0.12); ctx.lineTo(-sz*0.6,-sz*0.9);
+  ctx.quadraticCurveTo(sz*0.05,-sz*1.1,sz*0.9,sz*0.12); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.15)';
+  ctx.beginPath(); ctx.ellipse(sz*0.65,0,sz*0.3,sz*0.28,0.4,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.28)'; ctx.lineWidth=sz*0.16; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-sz*0.2,-sz*0.55); ctx.lineTo(sz*0.35,-sz*0.68); ctx.stroke();
+  ctx.restore();
+}
+
+function drawTelephonePoles() {
+  const poleSpacing=220, poleH=118;
+  const poleTopY=GROUND_Y-poleH, crossY=poleTopY+8, flagLineY=crossY+2;
+  for (let i=-1; i<5; i++) {
+    const px=(i*poleSpacing)-(wireOff%poleSpacing), nx=px+poleSpacing;
+    for (let w=0; w<3; w++) {
+      const wy=crossY+22+w*9, sag=18+w*3;
+      ctx.strokeStyle='rgba(20,12,4,0.50)'; ctx.lineWidth=0.85; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(px,wy); ctx.quadraticCurveTo((px+nx)/2,wy+sag,nx,wy); ctx.stroke();
+    }
+    ctx.strokeStyle=pal.wire+'cc'; ctx.lineWidth=1.1;
+    ctx.beginPath(); ctx.moveTo(px,flagLineY); ctx.quadraticCurveTo((px+nx)/2,flagLineY+5,nx,flagLineY); ctx.stroke();
+    const numPairs=3+(i%2);
+    for (let s=0; s<numPairs; s++) {
+      const t=(s+0.5)/numPairs, sx=px+t*poleSpacing, sagAtT=4*5*t*(1-t), wireY=flagLineY+sagAtT;
+      const shoeSize=4.5+(s%3)*1.0, colors=pal.flagColors;
+      ctx.strokeStyle=pal.wire+'99'; ctx.lineWidth=0.9; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(sx-2,wireY); ctx.lineTo(sx-3,wireY+9); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx+5,wireY); ctx.lineTo(sx+6,wireY+8); ctx.stroke();
+      drawShoe(sx-3,wireY+9+shoeSize,colors[s%colors.length],shoeSize);
+      drawShoe(sx+5,wireY+7+shoeSize*0.9,colors[(s+2)%colors.length],shoeSize*0.85);
+    }
+    ctx.strokeStyle=pal.wire; ctx.lineWidth=5; ctx.lineCap='square';
+    ctx.beginPath(); ctx.moveTo(px,GROUND_Y+2); ctx.lineTo(px,poleTopY); ctx.stroke();
+    ctx.strokeStyle='rgba(0,0,0,0.10)'; ctx.lineWidth=1;
+    for (let g=-1; g<=1; g++) { ctx.beginPath(); ctx.moveTo(px+g,poleTopY+18); ctx.lineTo(px+g,GROUND_Y); ctx.stroke(); }
+    ctx.strokeStyle=pal.wire; ctx.lineWidth=3.5; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(px-18,crossY+4); ctx.lineTo(px+18,crossY+4); ctx.stroke();
+    ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(px-11,crossY+24); ctx.lineTo(px+11,crossY+24); ctx.stroke();
+    ctx.fillStyle=pal.bldgMid;
+    [-10,0,10].forEach(ox=>{ ctx.beginPath(); ctx.arc(px+ox,crossY+4,2.2,0,Math.PI*2); ctx.fill(); });
+    [-7,7].forEach(ox=>{ ctx.beginPath(); ctx.arc(px+ox,crossY+24,1.8,0,Math.PI*2); ctx.fill(); });
+  }
+}
+
+function drawGround() {
+  const g = ctx.createLinearGradient(0,GROUND_Y,0,H);
+  g.addColorStop(0,pal.ground); g.addColorStop(1,pal.groundDark);
+  ctx.fillStyle=g; ctx.fillRect(0,GROUND_Y,W,H-GROUND_Y);
+  ctx.globalAlpha=0.055; ctx.fillStyle='#000';
+  for (let i=0; i<130; i++) {
+    const rx=(i*39.1+groundOff*1.2)%W, ry=GROUND_Y+(i*14.3)%(H-GROUND_Y);
+    ctx.fillRect(rx,ry,2,1);
+  }
+  ctx.globalAlpha=1;
+  ctx.strokeStyle=pal.groundDark+'55'; ctx.lineWidth=1;
+  for (let i=0; i<10; i++) { const sx=(i*80-groundOff%80); ctx.beginPath(); ctx.moveTo(sx,GROUND_Y+1); ctx.lineTo(sx,H); ctx.stroke(); }
+  ctx.strokeStyle=pal.roadLine+'55'; ctx.lineWidth=1.5; ctx.setLineDash([14,20]);
+  ctx.beginPath(); ctx.moveTo(0,GROUND_Y+(H-GROUND_Y)*0.44); ctx.lineTo(W,GROUND_Y+(H-GROUND_Y)*0.44); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle=pal.groundDark; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(0,GROUND_Y+2); ctx.lineTo(W,GROUND_Y+2); ctx.stroke();
+}
+
+// ── Draw: City building obstacle pair ────────────────────────────────────────
+function drawBuilding(b) {
+  const { x, w, top, style } = b;
+
+  // Color palette based on style
+  const colors = {
+    glass:  { body:'#4a6070', face:'#5a7888', win:'#a8d4e8', winDark:'#6090a8', edge:'#384858', top:'#384858' },
+    stone:  { body:'#5c5850', face:'#6e6860', win:'#c8b890', winDark:'#a09070', edge:'#444038', top:'#444038' },
+    tower:  { body:'#506058', face:'#607068', win:'#b0c8b8', winDark:'#708878', edge:'#3c4c44', top:'#3c4c44' },
+    stepped:{ body:'#584858', face:'#685868', win:'#c0a8c0', winDark:'#906080', edge:'#403040', top:'#403040' },
+  };
+  const c = colors[style] || colors.glass;
+
+  function drawBldgBlock(bx, by, bw, bh, isTop) {
+    // Body
+    ctx.fillStyle = c.body;
+    ctx.fillRect(bx, by, bw, bh);
+
+    // Side face (3D edge)
+    ctx.fillStyle = c.edge;
+    ctx.fillRect(bx + bw, by, 5, bh);
+
+    // Front face slightly lighter
+    ctx.fillStyle = c.face;
+    ctx.fillRect(bx + 2, by + 2, bw - 4, bh - 2);
+
+    // Windows grid
+    const winW = 5, winH = 7, colGap = 9, rowGap = 10;
+    const startX = bx + 7, startY = by + 8;
+    const cols = Math.floor((bw - 14) / colGap);
+    const rows = Math.floor((bh - 16) / rowGap);
+    for (let r = 0; r < rows; r++) {
+      for (let col = 0; col < cols; col++) {
+        const wx = startX + col * colGap;
+        const wy = startY + r * rowGap;
+        // Some windows lit, some dark
+        const lit = ((r * 7 + col * 3 + Math.floor(frame / 90)) % 5) !== 0;
+        ctx.fillStyle = lit ? c.win : c.winDark;
+        ctx.fillRect(wx, wy, winW, winH);
+      }
+    }
+
+    // Rooftop ledge
+    ctx.fillStyle = c.top;
+    if (isTop) {
+      ctx.fillRect(bx - 3, by + bh - 5, bw + 6, 5);
+    } else {
+      ctx.fillRect(bx - 3, by, bw + 6, 5);
+    }
+  }
+
+  // ── Top building (hangs from top of screen) ──
+  if (style === 'stepped') {
+    // Stepped: narrower block on bottom of the top building
+    const step = Math.min(12, w * 0.18);
+    drawBldgBlock(x, 0, w, top - 14, true);
+    drawBldgBlock(x + step, top - 14, w - step * 2, 14, false);
+  } else if (style === 'tower') {
+    // Tower: antenna spike on top building's bottom
+    drawBldgBlock(x, 0, w, top - 10, true);
+    ctx.fillStyle = c.edge;
+    ctx.fillRect(x + w / 2 - 1.5, top - 22, 3, 12);
+    ctx.beginPath(); ctx.arc(x + w / 2, top - 23, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#cc4444'; ctx.fill();
+  } else {
+    drawBldgBlock(x, 0, w, top, true);
+  }
+
+  // ── Bottom building (rises from ground) ──
+  const botY = top + GAP;
+  const botH = GROUND_Y - botY;
+  if (style === 'stepped') {
+    const step = Math.min(12, w * 0.18);
+    drawBldgBlock(x + step, botY, w - step * 2, 14, false);
+    drawBldgBlock(x, botY + 14, w, botH - 14, false);
+  } else {
+    drawBldgBlock(x, botY, w, botH, false);
+  }
+}
+
+// ── Draw: Blue Bird (same as before) ─────────────────────────────────────────
+function drawBird() {
+  const x = BIRD_X, y = bird.y;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(bird.angle);
+
+  const wingBeat = Math.sin(bird.wingPhase);
+  const isFalling = bird.vy > 1;
+
+  // Tail
+  ctx.save(); ctx.rotate(0.15);
+  ctx.fillStyle = '#0d6ebc';
+  ctx.beginPath();
+  ctx.moveTo(-8,4); ctx.lineTo(-20,10+wingBeat*2); ctx.lineTo(-16,5);
+  ctx.lineTo(-22,2+wingBeat*1.5); ctx.lineTo(-14,2);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+  // Lower wing
+  ctx.save();
+  ctx.rotate(isFalling ? wingBeat*0.3 : wingBeat*-0.55);
+  ctx.fillStyle = '#0d6ebc';
+  ctx.beginPath();
+  ctx.moveTo(-2,2); ctx.quadraticCurveTo(-2,12+wingBeat*6,12,8+wingBeat*4);
+  ctx.quadraticCurveTo(4,6,-2,2); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='#0a5299'; ctx.lineWidth=1.2; ctx.lineCap='round';
+  for (let f=0;f<3;f++) { const fx=4+f*3,fy=7+wingBeat*(4+f); ctx.beginPath(); ctx.moveTo(fx-2,fy-2); ctx.lineTo(fx,fy+3); ctx.stroke(); }
+  ctx.restore();
+
+  // Body
+  ctx.fillStyle='#1d9bf0';
+  ctx.beginPath(); ctx.ellipse(0,0,13,10,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.13)';
+  ctx.beginPath(); ctx.ellipse(-2,-4,6,3.5,-0.3,0,Math.PI*2); ctx.fill();
+
+  // Belly
+  ctx.fillStyle='#8dd3f7';
+  ctx.beginPath(); ctx.ellipse(3,3,6,5,0.3,0,Math.PI*2); ctx.fill();
+
+  // Head
+  ctx.fillStyle='#1d9bf0';
+  ctx.beginPath(); ctx.arc(7,-6,8.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.18)';
+  ctx.beginPath(); ctx.ellipse(5,-9,4,2.5,-0.4,0,Math.PI*2); ctx.fill();
+
+  // Eye
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(10,-8,4,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#1a1a2e'; ctx.beginPath(); ctx.arc(11,-8.5,2.2,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(11.8,-9.2,0.9,0,Math.PI*2); ctx.fill();
+
+  // Beak
+  ctx.fillStyle='#f5a623';
+  ctx.beginPath(); ctx.moveTo(16,-8); ctx.lineTo(24,-6.5); ctx.lineTo(16,-5); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='#c07a10'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(16,-6.8); ctx.lineTo(23,-6.5); ctx.stroke();
+
+  // Crest
+  ctx.fillStyle='#0f5fa8';
+  ctx.beginPath(); ctx.moveTo(4,-14); ctx.quadraticCurveTo(7,-22,10,-18); ctx.quadraticCurveTo(8,-14,4,-14); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(7,-13); ctx.quadraticCurveTo(11,-20,13,-17); ctx.quadraticCurveTo(11,-13,7,-13); ctx.closePath(); ctx.fill();
+
+  // Top wing
+  ctx.save();
+  ctx.rotate(isFalling ? wingBeat*0.25 : -0.2+wingBeat*-0.45);
+  ctx.fillStyle='#2aaaf5';
+  ctx.beginPath();
+  ctx.moveTo(-4,-2); ctx.quadraticCurveTo(-4,-14-wingBeat*5,10,-10-wingBeat*3);
+  ctx.quadraticCurveTo(2,-6,-4,-2); ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+  // Feet
+  if (!isFalling || bird.vy < 3) {
+    ctx.strokeStyle='#f5a623'; ctx.lineWidth=2; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(2,9); ctx.lineTo(0,16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(6,9); ctx.lineTo(8,16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,16); ctx.lineTo(-3,19); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,16); ctx.lineTo(2,19); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8,16); ctx.lineTo(5,19); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8,16); ctx.lineTo(10,19); ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life * 0.72;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ── Main draw ─────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0,0,W,H);
+  drawSky();
+  drawSkyline();
+  drawStreetTrees();
+  drawTelephonePoles();
+  drawGround();
+  buildings.forEach(drawBuilding);
+  drawParticles();
+  drawBird();
+}
+
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>
