@@ -1,6 +1,6 @@
 # Blue
 
-A minimalist browser-based flappy game set in a scrolling city. Navigate a blue bird through gaps between downtown buildings — the further you fly, the denser the skyline gets.
+A minimalist browser-based flappy game set in a scrolling city. Navigate a blue bird through gaps between downtown buildings the further you fly, the denser the skyline gets.
 
 Built with vanilla HTML5 Canvas. No dependencies, no build step.
 
